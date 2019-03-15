@@ -1,0 +1,390 @@
+/*
+MIT License
+
+Copyright (c) 2019 Max Johnon
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+
+/*
+# Summary
+An ExtendScript compatible log constructor object with shims for basic Console calls,
+log file, and custom "ExtendScript_Log" events sent to CEP panels.
+
+Trying to split the difference between too-basic and OMG-features-and-dependencies.
+
+# Features
+- Works with node.js require, AMD(probably), and vanilla ExtendScript.
+- Adds 'log' and 'console' aliases to optional parameter (like `$.global`)
+- Tries to JSON.stringify your message for you
+- Optional [ExtendScript_LogFile](https://github.com/MaxJohnson/extendscript_logfile) support
+- Event delivery to CEP (panels) (with secret support for passing data packets)
+- Make multiple logs with different names and levels and files
+- Graceful fallbacks or omissions if optional dependencies missing
+
+## Non-Blocking Dependencies
+- `JSON.stringify()` via whatever library you care to include
+- Event to CEP panels with `new ExternalObject("lib:\PlugPlugExternalObject")`
+- [ExtendScript_LogFile](https://github.com/MaxJohnson/extendscript_logfile)
+
+# Import
+## NPM
+If running Node NPM, you can `npm install ExtendScript_Log` to add to your node_modules folder
+## github
+Clone or download the repo and copy the ExtendScript_Log.jsxinc to your project
+
+# Include
+
+## NPM
+`var extlog = require("ExtendScript_Log");`
+
+## AMD
+I don't know but it's probably not difficult? Firmly in the untested-but-should-work category
+
+## ExtendScript
+### Eval into environment
+`$.evalFile("<path>/ExtendScript_Log.jsxinc")`
+
+### Include in scripts
+`//@include "<path>/ExtendScript_Log.jsxinc"`
+
+### concatinate or copy-paste directly
+Add to a build script or, I dunno, just copy-pasta it in there?
+
+# Use:
+Default log levels are:
+0  - trace
+1  - debug
+2  - info (also default if not specified)
+3  - warn
+10 - error
+
+## Make new log object
+make a new log and you get a separate instance
+```
+var myLog = new ExtendScript_Log();
+myLog.log('Hey there.');
+var specialLog = new ExtendScript_Log(null,"special");
+specialLog.log('Salutations.');
+myLog.warn('Special log thinks they're all that...');
+specialLog.info('Default log is jealous cause I have a label.');
+
+// prints:
+// Hey there.
+// SPECIAL:Salutations.
+// [WARN] Special log thinks they're all that...
+// SPECIAL:[INFO] Default log is jealous of my label.
+```
+### Constructor options
+"new" constructor takes 4 optional arguments.
+First arg is an alternate root object to tack on a 'log' and 'console' alias
+By passing $.global as first arg, we get global log and console objects!
+
+```
+root = $.global;// root to add convenience alisases to
+logName = "specialLog";// name other than "defualt"
+logLevel = 2;// log level filter
+useLogFile = true;// make a log file? Deafults to false
+keepOldLogs = false;// keep or delete all but latest log file?
+
+myLog = new ExtendScript_Log(root, logName, logLevel, useLogFile, keepOldLogs);
+```
+
+## Use the log
+
+```
+myLog = new ExtendScript_Log($.global);
+console.log('Messages are good.');
+console.info('So informative...');
+log.warn('Duck!');
+log.error('Not a good thing');
+
+mySecretLog = new ExtendScript_Log(null, "secret");
+mySecretLog.warn('Tell no one...');
+
+// prints:
+// Messages are good.
+// [INFO] So informative...
+// [WARN] Duck!
+// [ERROR] Not a good thing
+// SECRET:[WARN] Tell no one...
+```
+
+Second argument sends up an blocking alert dialog in app if true
+```log.error('Not a good thing', true);```
+
+Third argument
+
+# Bonus Features
+## Log file:
+Tries to make a log file in ./logs or to ~/Desktop/ExtendScript_Log_UnsavedScripts/
+Needs [ExtendScript_LogFile](https://github.com/MaxJohnson/extendscript_logfile)
+Note: Differnt logs get different log files, even if they all print to the same console.
+
+## CEP event:
+Tries to send type, level, label, and message as a packet in a custom event "ExtendScript_Log"
+No JSON support needed in the script to send, but you have to un-strigify on receipt:
+data string looks like: `{type: "default", level:2, label:"info", message:"Important things!"}`
+Note: the "clear()" function sends a packet with "clear" label and log level 99.
+*/
+
+// Add semicolon to prevent BAD THINGS (TM) from happening to concatenated code.
+;
+
+/**
+ * ExtendScript_Log constructor
+ * @method new ExtendScript_Log
+ * @param   {Object}  root        Object to attach ".log" and ".console" aliases to.
+ * @param  {String}   logName     Name for this log type, "" or null for "default"
+ * @param  {Integer}  logLevel    Log level threshold. 0 = least important.
+ * @param  {Boolean}  useLogFile  Whether or not to make a log file on the drive. Defaults to false.
+ * @param  {Boolean}  keepOldLogs Unless set to true, only the latest log file is kept.
+ * @return {Object}               Log object for chaining
+ */
+
+// UMD for compatability with AMD and Node require, but still support a global constructor in the ExtendScript context
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module.
+      define([], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node. Does not work with strict CommonJS
+    module.exports = factory;
+  } else {
+    // (root is global... so should be $.global for ExtendScript)
+    root.ExtendScript_Log = factory;
+  }
+}($.global, function (root, logName, logLevel, useLogFile , keepOldLogs) {// IIFE straight into the UMD, attaching to the $.global space
+
+    $.strict = true;
+    $.writeln("Making extendscript Log...");
+
+    var Log = { };
+
+    Log.level = 0; //TODO: figure out some config for log level
+    Log.logFile = null;
+    Log.levels = {};
+    Log.type = "";
+
+    // Support for custom events
+    try {
+            var _xLib = new ExternalObject("lib:\PlugPlugExternalObject");
+    } catch (err) {
+        //silent fail and check for _xLib later
+        $.writeln("[ERROR] Could not create ExternalObject for event handling. No CEP support.");
+    }
+
+
+    // convert error to string
+    _getExceptionMessage = function _getExceptionMessage(e) {
+        var fname, str;
+        fname = !e.fileName ? '???' : decodeURI(e.fileName);
+        str = "\tMessage: " + e.message + "\n\tFile: " + fname + "\n\tLine: " + (e.line || '???') + "\n\tError Name: " + e.name + "\n\tError Number: " + e.number;
+        if ($.stack) {
+            str += "\t" + $.stack;
+        }
+        return str;
+    }
+
+    // Safety wrapper and fallback for stringify attempt
+    _stringifyMessage = function _stringifyMessage(message)
+    {
+        try {
+            return JSON.stringify(message);
+        }
+        catch (e) {
+            return message.toString();
+        }
+    }
+
+
+    /**
+     * Initialize log object with parameters
+     * @method
+     * @param  {String} logName     Name for this log type, "" or null for "default"
+     * @param  {Integer} logLevel    Log level number. Lowest is least important.
+     * @param  {Boolean} useLogFile  Whether or not to make a log file on the drive. Defaults to false.
+     * @param  {Boolean} keepOldLogs Unless set to true, only the latest log file is kept.
+     * @return {Object}            Log object for chaining
+     */
+    Log.init = function(logName, logLevel, useLogFile, keepOldLogs) {
+        Log.level = (typeof logLevel == "number") ? logLevel : 0;
+        Log.type = (typeof logName == "string")? logName.toLowerCase():"";
+
+        if (useLogFile && typeof ExtendScript_LogFile == "function") {
+
+            if (!Log.logFile) {
+                Log.logFile = new ExtendScript_LogFile(Log, logName);
+                if (!keepOldLogs) {
+                    Log.logFile.removeOld();
+                }
+            }
+        }
+        return Log;
+    }
+
+
+    /**
+     * Master log function to filter log, print, send event, write to file.
+     * @method log
+     * @param   {*}         message   message to print to log
+     * @param   {Number}    level     log level 0 being least urgent
+     * @param   {String}    label     Label for log level ex. "info"
+     * @param   {boolean}   useAlert  true to invoke blocking alert dialog
+     * @return {Object}              self reference for chaining
+     */
+    Log.log = function log(message, level, label, useAlert) {
+        var file;
+        var level = level || 2;
+        // try to add label (ex. "[WARN] ")
+        var prefix = (typeof label == "string" && label.length)? "["+label.toUpperCase()+"] ":'';
+
+        // try to JSON strigify
+        if(typeof message !=="string") { message = _stringifyMessage(message); }
+
+
+        // reject by level
+        if (Log.level > level) {
+            return;
+        }
+
+        // Send message to Extendscript console
+        if ($) {
+            if (Log.type.length){
+                $.writeln( Log.type.toUpperCase()+":"+prefix + message);
+            } else {
+                $.writeln( prefix + message);
+            }
+        }
+
+
+        // Send message to CEP (panel) context via event packet
+        // un-strigify on receipt for:
+        // {type: "default", level:0, label:"log", message:"Important things!"}
+        if(typeof _xLib !== "undefined")
+        {
+            var eventObj = new CSXSEvent();
+            eventObj.type = "ExtendScript_Log";
+            eventObj.data = '{type:"'+Log.type+'",level:"'+level+'",label:"'+label+'",message:"'+message+'"}';
+            eventObj.dispatch();
+        }
+
+        // Write to log file
+        if ( Log.logFile instanceof Object && Log.logFile.file instanceof File) {
+            Log.logFile.writeln(prefix + message);
+        }
+
+        // Popup blocking alert
+        if (useAlert) {
+            alert(message);
+        }
+        return Log;
+    }
+
+    /**
+     * Add new Log level and attach convenience function to Log object
+     * @method addLogLevel
+     * @param  {String}    name  Name for log level
+     * @param  {Integer}    level log level
+     * @return {Object}              self reference for chaining
+     */
+    Log.addLogLevel = function addLogLevel(name, level) {
+        name = name.toLowerCase();
+
+        // Don't overwrite things like Log.init()...
+        if(typeof Log.name == "function" && !Log.levels.name) {
+            throw new Error('[ERROR] ExtendScript_Log can not make log level. Name '+name+'is reserved.');
+        }
+
+        Log.levels[name] = level;
+        Log[name] = function (message, useAlert) {
+            if(message instanceof Error) {
+                message = _getExceptionMessage(message);
+            }
+            return Log.log(_stringifyMessage(message), level, name, useAlert);
+        }
+        return Log;
+    }
+
+
+    /**
+     * Remove log level with specified name
+     * @method removeLogLevel
+     * @param  {String}       name name of log to remove
+     * @return {Object}              self reference for chaining
+     */
+    Log.removeLogLevel = function removeLogLevel(name) {
+        Log.levels[name.toLowerCase()] = undefined;
+        return Log;
+    }
+
+    /**
+     * Clear console, empty log file, send up "ExtendScript_Log" event with level 99
+     * @method clear
+     * @return {Object}              self reference for chaining
+     */
+    Log.clear = function clear() {
+        $.sleep(1000);// have to pause to catch our breath... otherwise print statements happen *after* clear.
+        if (app.name === "ExtendScript Toolkit") {
+            app.clc();
+        } else {
+            var estApp = BridgeTalk.getSpecifier("estoolkit");
+            if (estApp) {
+                var bt = new BridgeTalk;
+                bt.target = estApp;
+                bt.body = "app.clc()";
+                bt.send();
+            }
+        }
+
+        // Send clear event to CEP (panel) context via event packet
+        if(typeof _xLib !== "undefined")
+        {
+            var eventObj = new CSXSEvent();
+            eventObj.type = "ExtendScript_Log";
+            eventObj.data = '{type:"'+Log.type+'",level:99,label:"clear",message:""}';
+            eventObj.dispatch();
+        }
+
+        if ( Log.logFile instanceof Object && Log.logFile.file instanceof File) {
+            Log.logFile.clear();
+        }
+        return Log;
+    }
+
+    // Initialize
+
+    // add default log levels
+    Log.addLogLevel("error",10);
+    Log.addLogLevel("warn",3);
+    Log.addLogLevel("info",2);
+    Log.addLogLevel("debug",1);
+    Log.addLogLevel("trace",0);
+
+    // bind convenience aliasing
+    if(root)
+    {
+        root.log = Log;
+        root.console = Log;
+    }
+
+    return Log.init(logName, logLevel, useLogFile, keepOldLogs);
+
+}));
