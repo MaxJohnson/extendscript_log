@@ -1,4 +1,3 @@
-
 # Summary
 An ExtendScript compatible log constructor object with shims for basic Console calls,
 log file, and custom "ExtendScript_Log" events sent to CEP panels.
@@ -35,10 +34,10 @@ I don't know but it's probably not difficult? Firmly in the untested-but-should-
 
 ## ExtendScript
 ### Eval into environment
-`$.evalFile("<path>/ExtendScript_Log.jsxinc")`
+`$.evalFile("<path>/extendscript_log.jsxinc")`
 
 ### Include in scripts
-`//@include "<path>/ExtendScript_Log.jsxinc"`
+`//@include "<path>/extendscript_log.jsxinc"`
 
 ### concatinate or copy-paste directly
 Add to a build script or, I dunno, just copy-pasta it in there?
