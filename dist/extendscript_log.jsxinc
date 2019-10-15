@@ -206,6 +206,7 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
     // Safety wrapper and fallback for stringify attempt
     _stringifyMessage = function _stringifyMessage(message)
     {
+        if(typeof message === "string") {return message;}
         try {
             return JSON.stringify(message);
         }
