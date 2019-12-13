@@ -201,7 +201,7 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
             str += "\t" + $.stack;
         }
         return str;
-    }
+    };
 
     // Safety wrapper and fallback for stringify attempt
     _stringifyMessage = function _stringifyMessage(message)
@@ -213,7 +213,7 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
         catch (e) {
             return message.toString();
         }
-    }
+    };
 
 
     /**
@@ -239,7 +239,7 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
             }
         }
         return Log;
-    }
+    };
 
 
     /**
@@ -253,9 +253,9 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
      */
     Log.log = function log(message, level, label, useAlert) {
         var file;
-        var level = level || 2;
+        level = level || 2;
         // try to add label (ex. "[WARN] ")
-        var prefix = (typeof label == "string" && label.length)? "["+label.toUpperCase()+"] ":'';
+        var prefix = (typeof label == "string" && label.length)? "["+label.toLowerCase()+"] ":'';
 
         // try to JSON strigify
         if(typeof message !=="string") { message = _stringifyMessage(message); }
@@ -269,7 +269,7 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
         // Send message to Extendscript console
         if ($) {
             if (Log.type.length){
-                $.writeln( Log.type.toUpperCase()+":"+prefix + message);
+                $.writeln( Log.type.toLowerCase()+":"+prefix + message);
             } else {
                 $.writeln( prefix + message);
             }
@@ -298,7 +298,7 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
             alert(message);
         }
         return Log;
-    }
+    };
 
     /**
      * Add new Log level and attach convenience function to Log object
@@ -308,7 +308,7 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
      * @return {Object}              self reference for chaining
      */
     Log.addLogLevel = function addLogLevel(name, level) {
-        name = name.toUpperCase();
+        name = name.toLowerCase();
 
         // Don't overwrite things like Log.init()...
         if(typeof Log.name == "function" && !Log.levels.name) {
@@ -321,9 +321,9 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
                 message = _getExceptionMessage(message);
             }
             return Log.log(_stringifyMessage(message), level, name, useAlert);
-        }
+        };
         return Log;
-    }
+    };
 
 
     /**
@@ -333,9 +333,9 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
      * @return {Object}              self reference for chaining
      */
     Log.removeLogLevel = function removeLogLevel(name) {
-        Log.levels[name.toUpperCase()] = undefined;
+        Log.levels[name.toLowerCase()] = undefined;
         return Log;
-    }
+    };
 
     /**
      * Clear console, empty log file, send up "ExtendScript_Log" event with level 99
@@ -349,7 +349,7 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
         } else {
             var estApp = BridgeTalk.getSpecifier("estoolkit");
             if (estApp) {
-                var bt = new BridgeTalk;
+                var bt = new BridgeTalk();
                 bt.target = estApp;
                 bt.body = "app.clc()";
                 bt.send();
@@ -369,17 +369,17 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
             Log.logFile.clear();
         }
         return Log;
-    }
+    };
 
     // Initialize
 
     // add default log levels
-    Log.addLogLevel("CRITICAL",5);
-    Log.addLogLevel("ERROR",4);
-    Log.addLogLevel("WARN",3);
-    Log.addLogLevel("INFO",2);
-    Log.addLogLevel("DEBUG",1);
-    Log.addLogLevel("TRACE",0);
+    Log.addLogLevel("critical",5);
+    Log.addLogLevel("error",4);
+    Log.addLogLevel("warn",3);
+    Log.addLogLevel("info",2);
+    Log.addLogLevel("debug",1);
+    Log.addLogLevel("trace",0);
 
     // bind convenience aliasing
     if(root)

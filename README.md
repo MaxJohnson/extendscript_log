@@ -48,7 +48,8 @@ Default log levels are:
 * debug:1
 * info:2 (also default if not specified)
 * warn:3
-* error:10
+* error:4
+* critical:5
 
 ## Make new log object
 make a new log and you get a separate instance
@@ -101,7 +102,9 @@ mySecretLog.warn('Tell no one...');
 ```
 
 Second argument sends up an blocking alert dialog in app if true
-```log.error('Not a good thing', true);```
+```
+log.error('Not a good thing', true);
+```
 
 # Bonus Features
 ## Log file:
@@ -116,3 +119,27 @@ No JSON support needed in the script to send, but you have to un-strigify on rec
 data string looks like: `{type: "default", level:2, label:"info", message:"Important things!"}`
 
 *Note: the "clear()" function sends a packet with "clear" label and log level 99.*
+
+# CEP Integration
+## Catch log events in CEP panel
+This example assumes there is already an ExtendScript_Log sending logs from a script. The code below would be in the main CEP panel javascript.
+```
+    var csInterface = new CSInterface();
+
+    // Hook up internal logging messages from extendscript scripts that support it
+    csInterface.addEventListener( 'ExtendScript_Log', handleExtendscriptLog);
+    function handleExtendscriptLog(evt) {
+        var label = evt.data.label;
+        var logger = ( !label || label == 'undefined')? 'log':label;
+        var data = (typeof evt.data == 'string')? JSON.parse(cleanJSONString(evt.data)):evt.data;
+        console[logger]('[ES]', data.message);
+    }
+```
+Any logs coming from ExtendScripts would then print to the debug console of the chrome(ium) window you are testing in with warnings and errors displaying as such in the console...
+```
+//--- ExtendScript ---//
+myLog = new ExtendScript_Log($.global);
+console.log('Messages are good.');
+log.warn('Duck!');
+log.error('Not a good thing');
+```
