@@ -262,7 +262,7 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
 
 
         // reject by level
-        if (Log.level > level) {
+        if ( level < Log.level ) {
             return;
         }
 
@@ -281,9 +281,10 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
         // {type: "default", level:0, label:"log", message:"Important things!"}
         if(typeof _xLib !== "undefined")
         {
+            if(typeof label !== 'string' || !label.length){ label = "log";}
             var eventObj = new CSXSEvent();
             eventObj.type = "ExtendScript_Log";
-            eventObj.data = '{type:"'+Log.type+'",level:"'+level+'",label:"'+label+'",message:"'+message+'"}';
+            eventObj.data = '{"type":"'+Log.type+'","level":"'+level+'","label":"'+label+'","message":"'+message+'"}';
             eventObj.dispatch();
         }
 
@@ -307,7 +308,7 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
      * @return {Object}              self reference for chaining
      */
     Log.addLogLevel = function addLogLevel(name, level) {
-        name = name.toLowerCase();
+        name = name.toUpperCase();
 
         // Don't overwrite things like Log.init()...
         if(typeof Log.name == "function" && !Log.levels.name) {
@@ -332,7 +333,7 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
      * @return {Object}              self reference for chaining
      */
     Log.removeLogLevel = function removeLogLevel(name) {
-        Log.levels[name.toLowerCase()] = undefined;
+        Log.levels[name.toUpperCase()] = undefined;
         return Log;
     }
 
@@ -360,7 +361,7 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
         {
             var eventObj = new CSXSEvent();
             eventObj.type = "ExtendScript_Log";
-            eventObj.data = '{type:"'+Log.type+'",level:99,label:"clear",message:""}';
+            eventObj.data = '{"type":"'+Log.type+'","level":99,"label":"clear","message":""}';
             eventObj.dispatch();
         }
 
@@ -373,11 +374,12 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
     // Initialize
 
     // add default log levels
-    Log.addLogLevel("error",10);
-    Log.addLogLevel("warn",3);
-    Log.addLogLevel("info",2);
-    Log.addLogLevel("debug",1);
-    Log.addLogLevel("trace",0);
+    Log.addLogLevel("CRITICAL",5);
+    Log.addLogLevel("ERROR",4);
+    Log.addLogLevel("WARN",3);
+    Log.addLogLevel("INFO",2);
+    Log.addLogLevel("DEBUG",1);
+    Log.addLogLevel("TRACE",0);
 
     // bind convenience aliasing
     if(root)
