@@ -1,7 +1,7 @@
 {
   "name": "extendscript_log",
   "version": "1.2.1",
-  "description": "A simple logging utility for Adobe ExtendScript with UMD wrapper for cross-compatability with AMD and node.js require.",
+  "description": "A log constructor for Adobe ExtendScript with optional log file, and broadcasts to CEP panels with \"ExtendScript_Log\" events. UMD wrapper for cross-compatability with AMD and node.js require.",
   "main": "./dist/extendscript_log.jsxinc",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
