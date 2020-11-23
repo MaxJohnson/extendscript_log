@@ -131,7 +131,7 @@ This example assumes there is already an ExtendScript_Log sending logs from a sc
     function handleExtendscriptLog(evt) {
         var label = evt.data.label;
         var logger = ( !label || label == 'undefined')? 'log':label;
-        var data = (typeof evt.data == 'string')? JSON.parse(cleanJSONString(evt.data)):evt.data;
+        var data = (typeof evt.data == 'string')? JSON.parse(sanitizeStringForJSON(evt.data)):evt.data;
         console[logger]('[ES]', data.message);
     }
 ```

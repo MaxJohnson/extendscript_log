@@ -23,7 +23,7 @@ SOFTWARE.
 */
 
 
-/* README.md
+/*
 # Summary
 An ExtendScript compatible log constructor object with shims for basic Console calls,
 log file, and custom "ExtendScript_Log" events sent to CEP panels.
@@ -60,22 +60,21 @@ I don't know but it's probably not difficult? Firmly in the untested-but-should-
 
 ## ExtendScript
 ### Eval into environment
-`$.evalFile("<path>/extendscript_log.jsxinc")`
+`$.evalFile("<path>/ExtendScript_Log.jsxinc")`
 
 ### Include in scripts
-`//@include "<path>/extendscript_log.jsxinc"`
+`//@include "<path>/ExtendScript_Log.jsxinc"`
 
 ### concatinate or copy-paste directly
 Add to a build script or, I dunno, just copy-pasta it in there?
 
 # Use:
 Default log levels are:
-* trace:0
-* debug:1
-* info:2 (also default if not specified)
-* warn:3
-* error:4
-* critical:5
+0  - trace
+1  - debug
+2  - info (also default if not specified)
+3  - warn
+10 - error
 
 ## Make new log object
 make a new log and you get a separate instance
@@ -128,47 +127,21 @@ mySecretLog.warn('Tell no one...');
 ```
 
 Second argument sends up an blocking alert dialog in app if true
-```
-log.error('Not a good thing', true);
-```
+```log.error('Not a good thing', true);```
+
+Third argument
 
 # Bonus Features
 ## Log file:
 Tries to make a log file in ./logs or to ~/Desktop/ExtendScript_Log_UnsavedScripts/
 Needs [ExtendScript_LogFile](https://github.com/MaxJohnson/extendscript_logfile)
-
-*Note: Differnt logs get different log files, even if they all print to the same console.*
+Note: Differnt logs get different log files, even if they all print to the same console.
 
 ## CEP event:
 Tries to send type, level, label, and message as a packet in a custom event "ExtendScript_Log"
 No JSON support needed in the script to send, but you have to un-strigify on receipt:
 data string looks like: `{type: "default", level:2, label:"info", message:"Important things!"}`
-
-*Note: the "clear()" function sends a packet with "clear" label and log level 99.*
-
-# CEP Integration
-## Catch log events in CEP panel
-This example assumes there is already an ExtendScript_Log sending logs from a script. The code below would be in the main CEP panel javascript.
-```
-    var csInterface = new CSInterface();
-
-    // Hook up internal logging messages from extendscript scripts that support it
-    csInterface.addEventListener( 'ExtendScript_Log', handleExtendscriptLog);
-    function handleExtendscriptLog(evt) {
-        var label = evt.data.label;
-        var logger = ( !label || label == 'undefined')? 'log':label;
-        var data = (typeof evt.data == 'string')? JSON.parse(cleanJSONString(evt.data)):evt.data;
-        console[logger]('[ES]', data.message);
-    }
-```
-Any logs coming from ExtendScripts would then print to the debug console of the chrome(ium) window you are testing in with warnings and errors displaying as such in the console...
-```
-//--- ExtendScript ---//
-myLog = new ExtendScript_Log($.global);
-console.log('Messages are good.');
-log.warn('Duck!');
-log.error('Not a good thing');
-```
+Note: the "clear()" function sends a packet with "clear" label and log level 99.
 */
 
 // Add semicolon to prevent BAD THINGS (TM) from happening to concatenated code.
@@ -229,18 +202,26 @@ log.error('Not a good thing');
         return str;
     };
 
+
     // Safety wrapper and fallback for stringify attempt
-    _stringifyMessage = function _stringifyMessage(message)
-    {
-        if(typeof message === "string") {return message;}
-        try {
-            return JSON.stringify(message);
-        }
-        catch (e) {
-            return message.toString();
+    _stringifyMessage = function _stringifyMessage(message) {
+        switch (typeof message) {
+            case 'string':
+                return message;
+
+            case 'function':
+                // for logging, give more than just 'undefined'
+                message = message.toString();
+                return /(function [^\{]*)/.exec(message)[1];
+
+            default:
+                if (JSON && typeof JSON.stringify === 'function') {
+                    return JSON.stringify(message);
+                } else {
+                    return String(message);
+                }
         }
     };
-
 
     /**
      * Initialize log object with parameters
@@ -267,6 +248,44 @@ log.error('Not a good thing');
         return Log;
     };
 
+    /**
+     * Ensures special control characters are properly escaped for
+     * JSON message delivery
+     * This is a bastardization of the `Quote(value)` operation
+     * defined in ES 5.1 section 15.12.3.
+     * @method
+     * @param  {String} value string to escape control chars from
+     * @return {String}       fixed up string
+     */
+    Log.escapeControlCharacters = function (value) {
+        // Control characters and escaped equivalents
+        var Escapes = {
+            92: "\\\\",
+            34: '\\"',
+            8: "\\b",
+            12: "\\f",
+            10: "\\n",
+            13: "\\r",
+            9: "\\t"
+        };
+
+        var _escapeChar = function(character) {
+            var charCode = character.charCodeAt(0);
+            var escaped = Escapes[charCode];
+            if (escaped) {
+                return escaped;
+            }
+            return "\\u00" + toPaddedString(2, charCode.toString(16));
+        };
+
+        var reEscape = /[\x00-\x1f\x22\x5c]/g;
+        reEscape.lastIndex = 0;
+
+        if(reEscape.test(value)) {
+            value = value.replace(reEscape, _escapeChar);
+        }
+        return value;
+    };
 
     /**
      * Master log function to filter log, print, send event, write to file.
@@ -279,18 +298,20 @@ log.error('Not a good thing');
      */
     Log.log = function log(message, level, label, useAlert) {
         var file;
-        level = level || 2;
+        var data = {};
+        var eventObj = new CSXSEvent();
+        level = (typeof level === 'number') ? level : 2;
         // try to add label (ex. "[WARN] ")
         var prefix = (typeof label == "string" && label.length)? "["+label.toLowerCase()+"] ":'';
-
-        // try to JSON strigify
-        if(typeof message !=="string") { message = _stringifyMessage(message); }
 
 
         // reject by level
         if ( level < Log.level ) {
             return;
         }
+
+        // try to JSON strigify
+        if(typeof message !=="string") { message = _stringifyMessage(message); }
 
         // Send message to Extendscript console
         if ($) {
@@ -307,10 +328,12 @@ log.error('Not a good thing');
         // {type: "default", level:0, label:"log", message:"Important things!"}
         if(typeof _xLib !== "undefined")
         {
-            if(typeof label !== 'string' || !label.length){ label = "log";}
-            var eventObj = new CSXSEvent();
+            if(typeof label !== 'string' || !label.length) { label = "log";}
+
+            message = Log.escapeControlCharacters(message);
+            data = '{"type":"'+Log.type+'","level":"'+level+'","label":"'+label+'","message":"'+message+'"}';
             eventObj.type = "ExtendScript_Log";
-            eventObj.data = '{"type":"'+Log.type+'","level":"'+level+'","label":"'+label+'","message":"'+message+'"}';
+            eventObj.data = data;
             eventObj.dispatch();
         }
 
