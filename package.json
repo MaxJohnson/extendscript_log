@@ -1,6 +1,6 @@
 {
   "name": "extendscript_log",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "description": "A log constructor for Adobe ExtendScript with optional log file, and broadcasts to CEP panels with \"ExtendScript_Log\" events. UMD wrapper for cross-compatability with AMD and node.js require.",
   "main": "./dist/extendscript_log.jsxinc",
   "scripts": {

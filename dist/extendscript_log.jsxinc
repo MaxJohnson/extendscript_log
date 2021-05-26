@@ -101,7 +101,7 @@ By passing $.global as first arg, we get global log and console objects!
 root = $.global;// root to add convenience alisases to
 logName = "specialLog";// name other than "defualt"
 logLevel = 2;// log level filter
-useLogFile = true;// make a log file? Deafults to false
+useLogFile = true;// make a log file? Deafults to false. (see Third Argument)
 keepOldLogs = false;// keep or delete all but latest log file?
 
 myLog = new ExtendScript_Log(root, logName, logLevel, useLogFile, keepOldLogs);
@@ -134,7 +134,8 @@ Third argument
 # Bonus Features
 ## Log file:
 Tries to make a log file in ./logs or to ~/Desktop/ExtendScript_Log_UnsavedScripts/
-Needs [ExtendScript_LogFile](https://github.com/MaxJohnson/extendscript_logfile)
+Needs [ExtendScript_LogFile](https://github.com/MaxJohnson/extendscript_logfile),
+*but will make a new log file automatically* if that has been included.
 Note: Differnt logs get different log files, even if they all print to the same console.
 
 ## CEP event:
@@ -197,7 +198,7 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
         fname = !e.fileName ? '???' : decodeURI(e.fileName);
         str = "\tMessage: " + e.message + "\n\tFile: " + fname + "\n\tLine: " + (e.line || '???') + "\n\tError Name: " + e.name + "\n\tError Number: " + e.number;
         if ($.stack) {
-            str += "\t" + $.stack;
+            str += "\n\tStack: " + $.stack.split('\n').join('\n\t  ');
         }
         return str;
     };
@@ -294,16 +295,19 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
      * @param   {Number}    level     log level 0 being least urgent
      * @param   {String}    label     Label for log level ex. "info"
      * @param   {boolean}   useAlert  true to invoke blocking alert dialog
-     * @return {Object}              self reference for chaining
+     * @return  {Object}              self reference for chaining
      */
     Log.log = function log(message, level, label, useAlert) {
-        var file;
+        var messageStr;
         var data = {};
         var eventObj = new CSXSEvent();
-        level = (typeof level === 'number') ? level : 2;
-        // try to add label (ex. "[WARN] ")
-        var prefix = (typeof label == "string" && label.length)? "["+label.toLowerCase()+"] ":'';
+            level = (typeof level === 'number') ? level : 2;
 
+        // try to add labels (ex. "MyLogger [WARN] : ")
+        var prefix = "";
+            prefix += (Log.type.length) ? Log.type.toLowerCase() + " " : "";
+            prefix += (typeof label == "string" && label.length) ? "[" + label.toLowerCase() + "] " : "";
+            prefix += (prefix.length) ? ": " : "";
 
         // reject by level
         if ( level < Log.level ) {
@@ -311,17 +315,7 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
         }
 
         // try to JSON strigify
-        if(typeof message !=="string") { message = _stringifyMessage(message); }
-
-        // Send message to Extendscript console
-        if ($) {
-            if (Log.type.length){
-                $.writeln( Log.type.toLowerCase()+":"+prefix + message);
-            } else {
-                $.writeln( prefix + message);
-            }
-        }
-
+        messageStr = _stringifyMessage(message);
 
         // Send message to CEP (panel) context via event packet
         // un-strigify on receipt for:
@@ -330,21 +324,37 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
         {
             if(typeof label !== 'string' || !label.length) { label = "log";}
 
-            message = Log.escapeControlCharacters(message);
-            data = '{"type":"'+Log.type+'","level":"'+level+'","label":"'+label+'","message":"'+message+'"}';
+            data =
+              '{' +
+              '"type":"'      + Log.type +
+              '","level":"'   + level +
+              '","label":"'   + label +
+              '","message":"' + Log.escapeControlCharacters(messageStr) +
+              '"}';
             eventObj.type = "ExtendScript_Log";
             eventObj.data = data;
             eventObj.dispatch();
         }
 
+        if(message instanceof Error) {
+            messageStr = prefix + '\n' + _getExceptionMessage(message);
+        } else {
+            messageStr = prefix + messageStr;
+        }
+
+        // Send message to Extendscript console
+        if ($) {
+            $.writeln( messageStr);
+        }
+
         // Write to log file
         if ( Log.logFile instanceof Object && Log.logFile.file instanceof File) {
-            Log.logFile.writeln(prefix + message);
+            Log.logFile.writeln(messageStr);
         }
 
         // Popup blocking alert
         if (useAlert) {
-            alert(message);
+            alert(messageStr);
         }
         return Log;
     };
@@ -366,10 +376,7 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
 
         Log.levels[name] = level;
         Log[name] = function (message, useAlert) {
-            if(message instanceof Error) {
-                message = _getExceptionMessage(message);
-            }
-            return Log.log(_stringifyMessage(message), level, name, useAlert);
+            return Log.log(message, level, name, useAlert);
         };
         return Log;
     };
