@@ -34,22 +34,22 @@ I don't know but it's probably not difficult? Firmly in the untested-but-should-
 
 ## ExtendScript
 ### Eval into environment
-`$.evalFile("<path>/extendscript_log.jsxinc")`
+`$.evalFile("<path>/ExtendScript_Log.jsxinc")`
 
 ### Include in scripts
-`//@include "<path>/extendscript_log.jsxinc"`
+`//@include "<path>/ExtendScript_Log.jsxinc"`
 
 ### concatinate or copy-paste directly
 Add to a build script or, I dunno, just copy-pasta it in there?
 
 # Use:
 Default log levels are:
-* trace:0
-* debug:1
-* info:2 (also default if not specified)
-* warn:3
-* error:4
-* critical:5
+
+- 0  - trace
+- 1  - debug
+- 2  - info (also default if not specified)
+- 3  - warn
+- 10 - error
 
 ## Make new log object
 make a new log and you get a separate instance
@@ -68,7 +68,7 @@ specialLog.info('Default log is jealous cause I have a label.');
 // SPECIAL:[INFO] Default log is jealous of my label.
 ```
 ### Constructor options
-"new" constructor takes 4 optional arguments.
+"new" constructor takes 6 optional arguments.
 First arg is an alternate root object to tack on a 'log' and 'console' alias
 By passing $.global as first arg, we get global log and console objects!
 
@@ -76,13 +76,21 @@ By passing $.global as first arg, we get global log and console objects!
 root = $.global;// root to add convenience alisases to
 logName = "specialLog";// name other than "defualt"
 logLevel = 2;// log level filter
-useLogFile = true;// make a log file? Deafults to false
+useLogFile = true;// make a log file? Deafults to false. (see Bonus Features)
 keepOldLogs = false;// keep or delete all but latest log file?
+logFileDir = undefined;// a string filepath to save logs to.
 
-myLog = new ExtendScript_Log(root, logName, logLevel, useLogFile, keepOldLogs);
+myLog = new ExtendScript_Log(root, logName, logLevel, useLogFile, keepOldLogs, logFileDir);
 ```
 
 ## Use the log
+```
+Log.log (message, useAlert);// standard use
+
+// send custom level/label; doesn't work with Log.info() etc.
+Log.log (message, level, label, useAlert);
+```
+
 ```
 myLog = new ExtendScript_Log($.global);
 console.log('Messages are good.');
@@ -102,6 +110,7 @@ mySecretLog.warn('Tell no one...');
 ```
 
 Second argument sends up an blocking alert dialog in app if true
+
 ```
 log.error('Not a good thing', true);
 ```
@@ -109,37 +118,21 @@ log.error('Not a good thing', true);
 # Bonus Features
 ## Log file:
 Tries to make a log file in ./logs or to ~/Desktop/ExtendScript_Log_UnsavedScripts/
-Needs [ExtendScript_LogFile](https://github.com/MaxJohnson/extendscript_logfile)
+or you can specify a custom log folder path as the 6th argument.
+Needs [ExtendScript_LogFile](https://github.com/MaxJohnson/extendscript_logfile),
+*but will make a new log file automatically* if that has been included.
 
-*Note: Differnt logs get different log files, even if they all print to the same console.*
+*Note: Different logs get different log files, even if they all print to the same console.*
 
 ## CEP event:
 Tries to send type, level, label, and message as a packet in a custom event "ExtendScript_Log"
 No JSON support needed in the script to send, but you have to un-strigify on receipt:
 data string looks like: `{type: "default", level:2, label:"info", message:"Important things!"}`
+Note: the "clear()" function sends a packet with "clear" label and log level 99.
 
-*Note: the "clear()" function sends a packet with "clear" label and log level 99.*
-
-# CEP Integration
-## Catch log events in CEP panel
-This example assumes there is already an ExtendScript_Log sending logs from a script. The code below would be in the main CEP panel javascript.
+## Add custom labels and levels:
 ```
-    var csInterface = new CSInterface();
-
-    // Hook up internal logging messages from extendscript scripts that support it
-    csInterface.addEventListener( 'ExtendScript_Log', handleExtendscriptLog);
-    function handleExtendscriptLog(evt) {
-        var label = evt.data.label;
-        var logger = ( !label || label == 'undefined')? 'log':label;
-        var data = (typeof evt.data == 'string')? JSON.parse(sanitizeStringForJSON(evt.data)):evt.data;
-        console[logger]('[ES]', data.message);
-    }
-```
-Any logs coming from ExtendScripts would then print to the debug console of the chrome(ium) window you are testing in with warnings and errors displaying as such in the console...
-```
-//--- ExtendScript ---//
-myLog = new ExtendScript_Log($.global);
-console.log('Messages are good.');
-log.warn('Duck!');
-log.error('Not a good thing');
+// add a custom log level
+Log.addLogLevel("gui",3);
+Log.gui('Making dialog');
 ```

@@ -70,11 +70,12 @@ Add to a build script or, I dunno, just copy-pasta it in there?
 
 # Use:
 Default log levels are:
-0  - trace
-1  - debug
-2  - info (also default if not specified)
-3  - warn
-10 - error
+
+- 0  - trace
+- 1  - debug
+- 2  - info (also default if not specified)
+- 3  - warn
+- 10 - error
 
 ## Make new log object
 make a new log and you get a separate instance
@@ -93,7 +94,7 @@ specialLog.info('Default log is jealous cause I have a label.');
 // SPECIAL:[INFO] Default log is jealous of my label.
 ```
 ### Constructor options
-"new" constructor takes 4 optional arguments.
+"new" constructor takes 6 optional arguments.
 First arg is an alternate root object to tack on a 'log' and 'console' alias
 By passing $.global as first arg, we get global log and console objects!
 
@@ -101,13 +102,21 @@ By passing $.global as first arg, we get global log and console objects!
 root = $.global;// root to add convenience alisases to
 logName = "specialLog";// name other than "defualt"
 logLevel = 2;// log level filter
-useLogFile = true;// make a log file? Deafults to false. (see Third Argument)
+useLogFile = true;// make a log file? Deafults to false. (see Bonus Features)
 keepOldLogs = false;// keep or delete all but latest log file?
+logFileDir = undefined;// a string filepath to save logs to.
 
-myLog = new ExtendScript_Log(root, logName, logLevel, useLogFile, keepOldLogs);
+myLog = new ExtendScript_Log(root, logName, logLevel, useLogFile, keepOldLogs, logFileDir);
 ```
 
 ## Use the log
+```
+Log.log (message, useAlert);// standard use
+
+// send custom level/label; doesn't work with Log.info() etc.
+Log.log (message, level, label, useAlert);
+```
+
 ```
 myLog = new ExtendScript_Log($.global);
 console.log('Messages are good.');
@@ -127,22 +136,32 @@ mySecretLog.warn('Tell no one...');
 ```
 
 Second argument sends up an blocking alert dialog in app if true
-```log.error('Not a good thing', true);```
 
-Third argument
+```
+log.error('Not a good thing', true);
+```
 
 # Bonus Features
 ## Log file:
 Tries to make a log file in ./logs or to ~/Desktop/ExtendScript_Log_UnsavedScripts/
+or you can specify a custom log folder path as the 6th argument.
 Needs [ExtendScript_LogFile](https://github.com/MaxJohnson/extendscript_logfile),
 *but will make a new log file automatically* if that has been included.
-Note: Differnt logs get different log files, even if they all print to the same console.
+
+*Note: Different logs get different log files, even if they all print to the same console.*
 
 ## CEP event:
 Tries to send type, level, label, and message as a packet in a custom event "ExtendScript_Log"
 No JSON support needed in the script to send, but you have to un-strigify on receipt:
 data string looks like: `{type: "default", level:2, label:"info", message:"Important things!"}`
 Note: the "clear()" function sends a packet with "clear" label and log level 99.
+
+## Add custom labels and levels:
+```
+// add a custom log level
+Log.addLogLevel("gui",3);
+Log.gui('Making dialog');
+```
 */
 
 // Add semicolon to prevent BAD THINGS (TM) from happening to concatenated code.
@@ -171,10 +190,10 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
     // (root is global... so should be $.global for ExtendScript)
     root.ExtendScript_Log = factory;
   }
-}($.global, function (root, logName, logLevel, useLogFile , keepOldLogs) {// IIFE straight into the UMD, attaching to the $.global space
+}($.global, function (root, logName, logLevel, useLogFile , keepOldLogs, logFileDir) {// IIFE straight into the UMD, attaching to the $.global space
 
     $.strict = true;
-    $.writeln("Making extendscript Log...");
+    $.writeln("Loading extendscript Log...");
 
     var Log = { };
 
@@ -233,14 +252,14 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
      * @param  {Boolean} keepOldLogs Unless set to true, only the latest log file is kept.
      * @return {Object}            Log object for chaining
      */
-    Log.init = function(logName, logLevel, useLogFile, keepOldLogs) {
+    Log.init = function(logName, logLevel, useLogFile, keepOldLogs, logFileDir) {
         Log.level = (typeof logLevel == "number") ? logLevel : 0;
-        Log.type = (typeof logName == "string")? logName.toLowerCase():"";
+        Log.type = (typeof logName == "string")? logName.toLowerCase():"default";
 
         if (useLogFile && typeof ExtendScript_LogFile == "function") {
 
             if (!Log.logFile) {
-                Log.logFile = new ExtendScript_LogFile(Log, logName);
+                Log.logFile = new ExtendScript_LogFile(Log, logName, logFileDir);
                 if (!keepOldLogs) {
                     Log.logFile.removeOld();
                 }
@@ -295,13 +314,13 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
      * @param   {Number}    level     log level 0 being least urgent
      * @param   {String}    label     Label for log level ex. "info"
      * @param   {boolean}   useAlert  true to invoke blocking alert dialog
+     *                                can be used in place of level for shorthand call
      * @return  {Object}              self reference for chaining
      */
     Log.log = function log(message, level, label, useAlert) {
         var messageStr;
         var data = {};
         var eventObj = new CSXSEvent();
-            level = (typeof level === 'number') ? level : 2;
 
         // try to add labels (ex. "MyLogger [WARN] : ")
         var prefix = "";
@@ -309,13 +328,27 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
             prefix += (typeof label == "string" && label.length) ? "[" + label.toLowerCase() + "] " : "";
             prefix += (prefix.length) ? ": " : "";
 
+        // check if shorthand call log(message, useAlert)
+        useAlert = (typeof level === 'boolean') ? level : useAlert;// if user did log.log("messages", true)
+        level = (typeof level === 'number') ? level : 2;
+
         // reject by level
         if ( level < Log.level ) {
             return;
         }
 
+        if(message instanceof Error) {
+            // add stack trace, but remove any colons ":" or the JSON parser 
+            // freaks out no matter what I try on the receiving end.
+            message.stack = $.stack.replace(/[:]/g,'\\:').split('\n');
+            delete message.source;// please don't send the entire source code in the message.
+        }
+
         // try to JSON strigify
         messageStr = _stringifyMessage(message);
+
+        // remove non-printable and other non-valid JSON chars
+        messageStr = messageStr.replace(/[\u0000-\u0019]+/g,'');
 
         // Send message to CEP (panel) context via event packet
         // un-strigify on receipt for:
@@ -337,7 +370,7 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
         }
 
         if(message instanceof Error) {
-            messageStr = prefix + '\n' + _getExceptionMessage(message);
+            messageStr = prefix + ' ERROR\n' + _getExceptionMessage(message);
         } else {
             messageStr = prefix + messageStr;
         }
@@ -380,7 +413,6 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
         };
         return Log;
     };
-
 
     /**
      * Remove log level with specified name
@@ -444,6 +476,6 @@ Note: the "clear()" function sends a packet with "clear" label and log level 99.
         root.console = Log;
     }
 
-    return Log.init(logName, logLevel, useLogFile, keepOldLogs);
+    return Log.init(logName, logLevel, useLogFile, keepOldLogs, logFileDir);
 
 }));
